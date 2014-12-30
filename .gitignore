@@ -1,6 +1,8 @@
 *.class
 *.log
-
+.project
+.classpath
+.DS_Store
 # sbt specific
 .cache/
 .history/
