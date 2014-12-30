@@ -1,0 +1,8 @@
+node1,attribute1,7656
+node2,attribute2,1123
+node3,attribute3,3211
+node4,attribute4,5455
+node5,attribute5,8577
+node6,attribute6,3534
+node7,attribute7,3376
+node8,attribute8,3533

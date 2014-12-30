@@ -1,0 +1,1 @@
+2013/11/20,trade1,<attribute1,7656>,<attribute2,1123>,<attribute6,3534>

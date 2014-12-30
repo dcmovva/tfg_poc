@@ -1,0 +1,63 @@
+For each node in Leaf Nodes select the trades where the book matches.
+For each trade get 1 year of pnl vectors, so you’d get 24Nov2005 to 23Nov2006  (I left weekends in so it’s easier to determine 1 year).
+Calc VaR with this data (we can provide calc routine) and report Node, PnlData, VaR
+Move to the next date and get the next 1 year set of vectors (25Nov2005 to 24Nov2006)
+Calc VaR again and report Node, PnlData, VaR
+Repeat until you’ve reached the end of pnl vectors
+ 
+Do the same thing for each node in the Hierarchy but use the trades for the leaf nodes.
+
+
+
+Can you develop it so that you call a calculator  class with a set of trades and vectors  so the VaR calculator can easily be changed without touching the infrastructure?  If the api is defined we can provide the VAR class (and maybe other calculators if this works).
+ 
+To calc VaR:
+ 
+Take a set of PNL vectors (1 year = about 250 business days ) for each position in the set.
+Sum the vectors by pnl date so you have 1 set of vectors
+Sort the new vectors lowest to highest
+Depending on your VaR percentile, 1%, 5%, etc, take that percentile from the list of sorted vectors.
+
+
+
+Regarding the logic, I think we should focus first on calculating VAR for one year and then worry about multiple years.
+
+/*
+    get trade set - list of all trades to be considered at this node level, depth first search
+*/
+getTradesByDate(node, date) {
+    for each child in node on that date{
+        if (child is Trade)
+            trades.add(child.tradeID);
+        else
+            trades.add(getTrades(child, date));
+    }
+    return trades;
+}
+
+calculateAggExposureByDate(node, date) {
+    for each trade in getTrades(node, date)
+        aggExposure += getTradeExposure(trade, date);
+    return aggExposure;
+}
+
+valuate(trade, date) {
+    return randomNumber; // for now
+}
+
+calculateVar(node, dates) {
+    for each date in dates
+       exposureByDate += calculateAggExposurebyDate(node, date);
+    exposureByValue = sort(exposureByDate);
+    return exposureByValue.first(); // this assumes 100 dates
+}
+
+calculateAllVar(currentDate) {
+    nodes = getNodesForDate(currentDate);
+    dates = getLast1YrFromDate(currentDate);
+    for each node in nodes {
+        calculateVar(node, dates);
+    }
+}
+
+That's the sequential logic. We have to figure out what the best way to parallelize it.Simplest answer is doing it by date I think.
