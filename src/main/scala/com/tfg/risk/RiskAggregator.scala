@@ -75,13 +75,18 @@ object RiskAggregator {
 
     val tradesNodes = result.map(f => f._2._1.nodeId -> f._2._2.tradeId).groupByKey().map(f => (f._1 -> f._2.toArray))
 
+    
+    
     val v1 = hierarchy.flatMap(f => inverted(f._1, f._2))
 
     val v2 = v1.join(tradesNodes).map(f => f._2._1 -> f._2._2).groupByKey.map(f => (f._1 -> joinValues(f._2))).collectAsMap()
 
     val v3 = v2.map(calculateVAR(_)).toSeq
 
-    val v4 = sc.parallelize(v3)
+    val v5 = tradesNodes.collectAsMap().map(f => f._1 -> f._2.mkString(",")).map(calculateVAR(_)).toSeq
+    
+    val v6 = v3.union(v5)
+    val v4 = sc.parallelize(v6)
 
     v4.saveAsTextFile("/Users/dilip/tfg/tfg_poc/data/output")
 
