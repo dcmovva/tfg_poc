@@ -6,12 +6,15 @@ import org.apache.spark.SparkConf
 import org.apache.spark.rdd._
 import java.text.SimpleDateFormat
 import java.util.Date
+import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD
 
 object RiskAggregator {
 
+  val startTime = System.currentTimeMillis();
+  var count = 0
   case class Trades(tradeId: Long, asofDate: Date, attributes: Array[String])
   case class Leaves(nodeId: Int, book: String)
-  case class PnlVector(tradeId: Long, asofDate: Date, pnlDate: Date, value: Double)
+  case class PnlVector(tradeId: Long, asofDate: Date, pnlDays: Int, value: Double)
 
   def main(args: Array[String]) {
 
@@ -24,7 +27,14 @@ object RiskAggregator {
     val trades = sc.textFile("/Users/dilip/tfg/tfg_poc/data/trades.csv").map(_.split(",")).map(
       t => (t(2), Trades(t(1).toInt, new SimpleDateFormat("MM/dd/yy").parse(t(0)), t.slice(2, t.length - 1))))
 
-    val pnlVectors = sc.textFile("/Users/dilip/tfg/tfg_poc/data/vectors1.csv").map(_.split(",")).map(v => PnlVector(v(1).toLong, new SimpleDateFormat("MM/dd/yy").parse(v(0)), new SimpleDateFormat("MM/dd/yy").parse(v(2)), v(3).toDouble))
+    val p = sc.textFile("/Users/dilip/tfg/tfg_poc/data/vectors_new.csv").map(_.split(",")).map(v => PnlVector(v(1).toLong, new SimpleDateFormat("MM/dd/yy").parse(v(0)), v(2).toInt, v(3).toDouble))
+
+    val pnlVectorsRaw = p.groupBy(f => f.tradeId)
+    val pnlVectors = IndexedRDD(pnlVectorsRaw).cache()
+
+    val value = pnlVectors.first()
+    val daysArray = value._2.map(f => f.pnlDays).sliding(365).toArray.map(f => (f.head, f.last))
+    val asOfDate = value._2.take(1).map(f => f.asofDate).head
 
     def inverted(key: Int, list: List[Int]): Map[Int, Int] = {
 
@@ -36,29 +46,57 @@ object RiskAggregator {
       list.map(x => x.mkString(",")).mkString(",")
     }
 
-    def filtered(tradeId: Int) = {
-      pnlVectors.filter(f => f.tradeId == tradeId).toArray()
+    def filterTrade(tradeId: Int) = {
+
+      pnlVectors.get(tradeId).toIndexedSeq.flatMap(f => f)
     }
 
+    def filter(tradeId: Int, item: (Int, Int)) = {
+      pnlVectors.get(tradeId).toIndexedSeq.flatMap(f => f).filter(f => f.pnlDays >= item._1).filter(f => f.pnlDays <= item._2)
+    }
     def sumValues(arr: Array[PnlVector]) = {
 
       arr.map(_.value).sum
     }
 
-    def calculateVAR(input: (Int, String)) = {
+    def calculate(nodeId : Int,input: Array[PnlVector], item: (Int, Int)) = {
 
-      val tradeIds = input._2.split(",")
+      
 
-      val trades = tradeIds.map(f => filtered(f.toInt)).flatMap(f => f)
+      val millis = asOfDate.getTime();
+      val startDate = new Date(millis - (item._1 * 24 * 60 * 60 * 1000));
 
-      val groupAndSum = trades.groupBy(f => f.pnlDate).map(f => (f._1 -> sumValues(f._2)))
+      
+
+      val groupAndSum = input.groupBy(f => f.pnlDays).map(f => (f._1 -> sumValues(f._2)))
 
       val sorted = groupAndSum.toList sortBy { _._2 }
 
       if (sorted.size > 0)
-        (input._1, sorted.last._2)
+        (nodeId, startDate, sorted.last._2)
       else
-        (input._1, 0.0)
+        (nodeId, startDate, 0.0)
+
+    }
+
+    def calculateVAR(input: (Int, String)) = {
+
+      val tradeIds = input._2.split(",")
+      val trades = tradeIds.map(f => filterTrade(f.toInt)).flatMap(f => f)
+      
+      println("Trades Size :" + trades.size)
+      var i = 0
+      val r = new Array[(Int, Date, Double)](daysArray.length)
+      for (item <- daysArray) {
+        
+      val v =  trades.filter(f => f.pnlDays >= item._1).filter(f => f.pnlDays <= item._2)
+
+        r(i) = calculate(input._1,v,item)
+
+        i = i + 1
+      }
+
+      r
 
     }
 
@@ -75,8 +113,6 @@ object RiskAggregator {
 
     val tradesNodes = result.map(f => f._2._1.nodeId -> f._2._2.tradeId).groupByKey().map(f => (f._1 -> f._2.toArray))
 
-    
-    
     val v1 = hierarchy.flatMap(f => inverted(f._1, f._2))
 
     val v2 = v1.join(tradesNodes).map(f => f._2._1 -> f._2._2).groupByKey.map(f => (f._1 -> joinValues(f._2))).collectAsMap()
@@ -84,11 +120,18 @@ object RiskAggregator {
     val v3 = v2.map(calculateVAR(_)).toSeq
 
     val v5 = tradesNodes.collectAsMap().map(f => f._1 -> f._2.mkString(",")).map(calculateVAR(_)).toSeq
-    
-    val v6 = v3.union(v5)
-    val v4 = sc.parallelize(v6)
 
-    v4.saveAsTextFile("/Users/dilip/tfg/tfg_poc/data/output")
+    val v6 = v3.union(v5).flatMap(f => f)
+    val v4 = sc.parallelize(v6)
+    
+    v4.map(tuple => "%s,%s,%f".format(tuple._1, tuple._2, tuple._3)).saveAsTextFile("/Users/dilip/tfg/tfg_poc/data/output/" + System.currentTimeMillis() / 1000 + "/")
+
+    val endTime = System.currentTimeMillis();
+
+    val duration = (endTime - startTime);
+
+    println("count :" + count)
+    println("that took: " + duration / 1000 + " seconds.");
 
   }
 
