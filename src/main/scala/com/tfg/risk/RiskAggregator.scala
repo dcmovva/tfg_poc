@@ -11,23 +11,22 @@ import edu.berkeley.cs.amplab.spark.indexedrdd.IndexedRDD
 object RiskAggregator {
 
   val startTime = System.currentTimeMillis();
-  var count = 0
   case class Trades(tradeId: Long, asofDate: Date, attributes: Array[String])
   case class Leaves(nodeId: Int, book: String)
   case class PnlVector(tradeId: Long, asofDate: Date, pnlDays: Int, value: Double)
 
   def main(args: Array[String]) {
 
-    val conf = new SparkConf().setAppName("Risk Aggregator").setMaster("local")
+    val conf = new SparkConf().setAppName("Risk Aggregator")
     val sc = new SparkContext(conf)
 
-    val leaves = sc.textFile("/Users/dilip/tfg/tfg_poc/data/leaves.csv").map(_.split(",")).map(
+    val leaves = sc.textFile("/home/ec2-user/data/leaves.csv").map(_.split(",")).map(
       f => (f(1), Leaves(f(0).toInt, f(1))))
 
-    val trades = sc.textFile("/Users/dilip/tfg/tfg_poc/data/trades.csv").map(_.split(",")).map(
+    val trades = sc.textFile("/home/ec2-user/data/trades.csv").map(_.split(",")).map(
       t => (t(2), Trades(t(1).toInt, new SimpleDateFormat("MM/dd/yy").parse(t(0)), t.slice(2, t.length - 1))))
 
-    val p = sc.textFile("/Users/dilip/tfg/tfg_poc/data/vectors_new.csv").map(_.split(",")).map(v => PnlVector(v(1).toLong, new SimpleDateFormat("MM/dd/yy").parse(v(0)), v(2).toInt, v(3).toDouble))
+    val p = sc.textFile("/home/ec2-user/data/vectors_new.csv").map(_.split(",")).map(v => PnlVector(v(1).toLong, new SimpleDateFormat("MM/dd/yy").parse(v(0)), v(2).toInt, v(3).toDouble))
 
     val pnlVectorsRaw = p.groupBy(f => f.tradeId)
     val pnlVectors = IndexedRDD(pnlVectorsRaw).cache()
@@ -100,7 +99,7 @@ object RiskAggregator {
 
     }
 
-    //    val hierarchy = sc.textFile("/Users/dilip/tfg/tfg_poc/data/hierarchy.csv").map(_.split(",")).map(f => f(1) -> f.slice(2, f.length))
+    //    val hierarchy = sc.textFile("/home/ec2-user/data/hierarchy.csv").map(_.split(",")).map(f => f(1) -> f.slice(2, f.length))
     //    //.map(f => (f._1 -> f._2.mkString(",")))
     //    
     //    
@@ -124,13 +123,12 @@ object RiskAggregator {
     val v6 = v3.union(v5).flatMap(f => f)
     val v4 = sc.parallelize(v6)
     
-    v4.map(tuple => "%s,%s,%f".format(tuple._1, tuple._2, tuple._3)).saveAsTextFile("/Users/dilip/tfg/tfg_poc/data/output/" + System.currentTimeMillis() / 1000 + "/")
+    v4.map(tuple => "%s,%s,%f".format(tuple._1, tuple._2, tuple._3)).saveAsTextFile("/home/ec2-user/data/output/" + System.currentTimeMillis() / 1000 + "/")
 
     val endTime = System.currentTimeMillis();
 
     val duration = (endTime - startTime);
 
-    println("count :" + count)
     println("that took: " + duration / 1000 + " seconds.");
 
   }
